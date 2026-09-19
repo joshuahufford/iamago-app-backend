@@ -23,7 +23,8 @@ class ContactRequestCreateView(generics.CreateAPIView):
 
     serializer_class = ContactRequestCreateSerializer
     permission_classes = [AllowAny]
-    authentication_classes: list = []
+    # Authentication stays on: an enquiry sent while signed in has to be linked
+    # to that account, or the patient can never follow it up.
 
     def create(self, request, *args, **kwargs):
         verdict = check_contact_quota(request)

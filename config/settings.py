@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.analytics",
     "apps.outreach",
     "apps.portal",
+    "apps.patients",
 ]
 
 MIDDLEWARE = [

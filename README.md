@@ -51,6 +51,7 @@ apps/
   analytics/       Usage tracking, daily rollups, and the search rate limit
   outreach/        Contact requests, consent records, and the access audit
   portal/          Practitioner-facing API: own listing, stats, enquiries
+  patients/        Patient-facing API: saved searches, enquiries, claiming
 tests/             pytest suite (API-level, hits the real database)
 ```
 
@@ -397,3 +398,39 @@ p.user = u; p.save()
 
 Set it in the admin instead via the practitioner's **Contact** section. A
 self-service *claim your listing* flow is the natural next step.
+
+## Patient dashboard API
+
+`/api/patients/…`, all `IsAuthenticated` and all scoped to `request.user`.
+
+| Method | Path                            | Purpose                             |
+| ------ | ------------------------------- | ----------------------------------- |
+| `GET`  | `/api/patients/searches/`       | Searches they ran or claimed        |
+| `POST` | `/api/patients/searches/claim/` | Attach an anonymous search          |
+| `GET`  | `/api/patients/enquiries/`      | Enquiries they sent, and progress   |
+
+The patient's view of an enquiry deliberately omits `practitioner_note` — that
+is the practitioner's private working record, not correspondence.
+
+### Claiming
+
+The homepage works without an account, so almost every patient's first searches
+belong to nobody. Without claiming, signing up would produce an empty dashboard
+however much someone had used the site.
+
+The claim token is the capability — the same one that opens the results — and
+only an **unclaimed** search can be taken, so claiming can never move a search
+away from an account that already holds it. Re-claiming your own is a no-op;
+claiming someone else's returns `409`.
+
+Claiming is offered as a button rather than done automatically, because result
+links are shareable: silently filing someone else's search, and the health
+concerns attached to it, under whoever opened the link would be wrong.
+
+> **Authentication stays enabled on the anonymous-capable create views.**
+> `/api/directory/recommendations/` and `/api/outreach/contact-requests/` are
+> `AllowAny`, but they must still *authenticate* when a token is present — that
+> is the only way a search or enquiry gets attached to an account. Switching
+> their `authentication_classes` off silently breaks the dashboard, and
+> `force_authenticate` in tests cannot catch it because it bypasses
+> authentication entirely. `TestLinkingWithARealToken` signs in for real.

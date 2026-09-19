@@ -66,7 +66,9 @@ class RecommendationRequestCreateView(generics.CreateAPIView):
 
     serializer_class = RecommendationRequestCreateSerializer
     permission_classes = [AllowAny]
-    authentication_classes: list = []
+    # Authentication is left on deliberately. Anonymous searching is the point,
+    # but when a token *is* sent the search must be attached to that account or
+    # it will never reach the patient's dashboard.
 
     @extend_schema(
         responses={
