@@ -19,6 +19,10 @@ class SearchQuota(models.Model):
     # Recorded so we can see whether the email gate is doing anything.
     gave_email = models.BooleanField(default=False)
     blocked_count = models.PositiveIntegerField(default=0)
+    # Contact requests are counted separately from searches: a patient who
+    # searched a lot should still be able to enquire, and an enquiry is far
+    # more costly to a practitioner than a search is to us.
+    contact_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

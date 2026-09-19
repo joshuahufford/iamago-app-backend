@@ -59,6 +59,10 @@ class QuotaVerdict:
         return max(self.limit - self.used, 0)
 
 
+def contact_limit() -> int:
+    return getattr(settings, "CONTACT_REQUEST_LIMIT_PER_DAY", 5)
+
+
 def anonymous_limit() -> int:
     return getattr(settings, "ANON_SEARCH_LIMIT_PER_DAY", 5)
 
@@ -102,3 +106,33 @@ def record_block(request, *, day: date | None = None) -> None:
     SearchQuota.objects.filter(
         ip_hash=visitor_hash(request), day=day or date.today()
     ).update(blocked_count=models.F("blocked_count") + 1)
+
+
+def check_contact_quota(request, *, day: date | None = None) -> QuotaVerdict:
+    """Consume one enquiry from this visitor's daily allowance.
+
+    Separate from the search allowance on purpose. Supplying an email does not
+    raise this ceiling, because on the contact form the email is the patient's
+    own contact detail rather than anything that identifies the requester to
+    us — treating it as a credential would let the form bypass the limit.
+    """
+    ip_hash = visitor_hash(request)
+    day = day or date.today()
+    limit = contact_limit()
+
+    with transaction.atomic():
+        quota, _ = SearchQuota.objects.get_or_create(ip_hash=ip_hash, day=day)
+        quota = SearchQuota.objects.select_for_update().get(pk=quota.pk)
+
+        if quota.contact_count >= limit:
+            return QuotaVerdict(
+                allowed=False,
+                code="rate_limited",
+                used=quota.contact_count,
+                limit=limit,
+            )
+
+        quota.contact_count += 1
+        quota.save(update_fields=["contact_count", "updated_at"])
+
+    return QuotaVerdict(allowed=True, used=quota.contact_count, limit=limit)

@@ -1,0 +1,25 @@
+Hello {{ practitioner.display_name }},
+
+Someone found you through iamago and asked you to get in touch.
+
+  Name:  {{ contact.name }}
+  Email: {{ contact.email }}
+{% if contact.phone %}  Phone: {{ contact.phone }}
+{% endif %}{% if concerns %}  Looking for help with: {{ concerns }}
+{% endif %}{% if location %}  Searching near: {{ location }}
+{% endif %}
+{% if contact.message %}In their words:
+
+{{ contact.message }}
+
+{% endif %}They agreed to the following when they sent this:
+
+  "{{ contact.consent_text }}"
+
+You can reply to this email to reach them directly, or manage your enquiries at
+{{ site_url }}/portal.
+
+—
+iamago
+This message contains someone's personal and health information. Please handle
+it accordingly and do not forward it.

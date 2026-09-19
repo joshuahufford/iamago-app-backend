@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.directory",
     "apps.analytics",
+    "apps.outreach",
+    "apps.portal",
 ]
 
 MIDDLEWARE = [
@@ -153,6 +155,27 @@ GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
 # is public by nature, so restrict it by HTTP referrer in the Cloud console.
 GOOGLE_MAPS_BROWSER_KEY = env("GOOGLE_MAPS_BROWSER_KEY", default="")
 
+# --- Email -----------------------------------------------------------------
+
+# Console in development so nothing is sent by accident and every message is
+# still visible; point EMAIL_BACKEND at SMTP (or a provider) in production.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="iamago <hello@example.com>")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# Where the frontend lives. Used to build links in outgoing mail, so it must be
+# the public address rather than the API's.
+SITE_URL = env("SITE_URL", default="http://localhost:5173")
+
 # --- Rate limiting / anti-scraping -----------------------------------------
 
 # Free searches per visitor per day. Deliberately generous: a real patient runs
@@ -161,6 +184,9 @@ ANON_SEARCH_LIMIT_PER_DAY = env.int("ANON_SEARCH_LIMIT_PER_DAY", default=5)
 # Ceiling once a visitor supplies an email. Higher, but still a ceiling — an
 # email is a speed bump, not a licence to take the directory.
 EMAIL_SEARCH_LIMIT_PER_DAY = env.int("EMAIL_SEARCH_LIMIT_PER_DAY", default=25)
+# Enquiries per visitor per day, counted separately from searches. An enquiry
+# lands in a practitioner's inbox, so this is deliberately tighter.
+CONTACT_REQUEST_LIMIT_PER_DAY = env.int("CONTACT_REQUEST_LIMIT_PER_DAY", default=5)
 
 # Number of proxies in front of the app. Leave at 0 unless you run behind one:
 # X-Forwarded-For is client-supplied, so trusting it without knowing the proxy

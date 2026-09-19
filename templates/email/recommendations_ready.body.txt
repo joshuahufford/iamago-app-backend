@@ -1,0 +1,13 @@
+Here are your matches near {{ request_location }}:
+
+{% for item in recommendations %}  {{ forloop.counter }}. {{ item.practitioner.display_name }}{% if item.practitioner.credentials %}, {{ item.practitioner.credentials }}{% endif %}
+     {% for reason in item.reasons %}{{ reason }}{% if not forloop.last %} · {% endif %}{% endfor %}
+
+{% endfor %}
+Open them again any time:
+{{ recommendation_url }}
+
+—
+iamago
+We help you find practitioners. We do not provide medical advice, and a listing
+is not an endorsement.

@@ -49,6 +49,8 @@ apps/
   common/          Shared base model, pagination, error envelope, health check
   directory/       Practitioners, modalities, concerns, and the matching engine
   analytics/       Usage tracking, daily rollups, and the search rate limit
+  outreach/        Contact requests, consent records, and the access audit
+  portal/          Practitioner-facing API: own listing, stats, enquiries
 tests/             pytest suite (API-level, hits the real database)
 ```
 
@@ -299,3 +301,99 @@ then have to protect. Rotating `IP_HASH_SALT` resets everyone's counter.
 > proxy and shares one allowance. If you set it without actually having that
 > many proxies, anyone can forge a header and reset their own limit. Set it to
 > the number of proxies that really sit in front of the app.
+
+## Contact requests
+
+A patient asking a practitioner to reach out is the conversion event the
+partner tier is sold on, so it is a first-class record rather than a flag.
+
+`POST /api/outreach/contact-requests/` — public, because the whole flow works
+without an account.
+
+### Consent is stored as wording, not a boolean
+
+`ContactRequest.consent_text` holds **the exact sentence the patient agreed to**,
+captured at the time. "They ticked a box" is not a defensible record of what
+someone agreed to, and the copy will change over time — changing it must not
+rewrite what past patients consented to.
+
+Sharing the health concerns from the search is **opt-in and off by default**.
+The contact details are what a practitioner needs to reply; why someone is
+seeking care is theirs to volunteer. `ContactRequest.shared_concerns` returns
+nothing when consent was withheld, so a caller cannot leak the health context by
+forgetting to check the flag.
+
+### Access is audited
+
+Opening an enquiry writes a `ContactRequestAccess` row — who, when, from which
+hashed visitor. A contact request can carry why a person is seeking care, so
+reading one is an event worth being able to account for afterwards. The admin
+cannot delete these.
+
+### Its own rate limit
+
+Enquiries are counted separately from searches (`CONTACT_REQUEST_LIMIT_PER_DAY`,
+default 5). Two reasons: an enquiry lands in a practitioner's inbox, so it
+deserves a tighter cap than a search; and a patient who searched a lot must
+still be able to make one. Supplying an email does **not** raise this ceiling —
+on this form the email is the patient's own contact detail, not a credential,
+and treating it as one would let the form bypass the limit entirely.
+
+## Email
+
+Messages are rendered from a template pair in `templates/email/` —
+`<name>.subject.txt` and `<name>.body.txt` — so the copy lives with the other
+templates and a subject can never drift from its body.
+
+Sending is **best-effort**: a mail outage must not fail the request that
+triggered it, because losing a contact request is far worse than losing its
+notification. The row is saved first, and the portal shows it regardless.
+
+| Template                        | When                                 |
+| ------------------------------- | ------------------------------------ |
+| `contact_request_practitioner`  | An enquiry arrives (reply-to is the patient) |
+| `contact_request_patient`       | Confirming what we shared, verbatim  |
+| `recommendations_ready`         | "Email these matches to me"          |
+
+Development uses the console backend, so nothing is sent by accident and every
+message is still visible. Set `EMAIL_BACKEND`, the SMTP variables and `SITE_URL`
+before contact requests go live — `SITE_URL` must be the **frontend's** public
+address, since it builds the links inside the mail.
+
+## Practitioner portal API
+
+`/api/portal/…`, gated by `IsClaimedPractitioner`: the user must be signed in
+**and** linked to a listing via `Practitioner.user`. That link is the
+authorisation — every query is scoped to `request.user.practitioner`, so a
+practitioner can only ever see their own.
+
+| Method      | Path                                 | Purpose                    |
+| ----------- | ------------------------------------ | -------------------------- |
+| `GET/PATCH` | `/api/portal/me/`                    | Their own listing          |
+| `GET`       | `/api/portal/stats/?days=30`         | Impressions, clicks, enquiries |
+| `GET`       | `/api/portal/contact-requests/`      | Their enquiries            |
+| `GET/PATCH` | `/api/portal/contact-requests/<id>/` | One enquiry; GET audits it |
+
+**Tier, publication state and coordinates are not editable here.** A
+practitioner cannot promote themselves to partner or publish an unreviewed
+listing, and a wrong coordinate pair silently breaks matching, so re-geocoding
+stays an admin action.
+
+The portal's update writes **only the columns it owns** rather than saving the
+whole instance, so a practitioner editing their bio cannot clobber a tier an
+admin changed at the same moment.
+
+### Linking an account to a listing
+
+```bash
+python manage.py shell -c "
+from apps.accounts.models import User
+from apps.directory.models import Practitioner
+u = User.objects.get(email='maya@example.com')
+p = Practitioner.objects.get(display_name='Maya Ellison')
+p.user = u; p.save()
+"
+```
+
+Set it in the admin instead via the practitioner's **Contact** section. A
+self-service *claim your listing* flow is the natural next step.

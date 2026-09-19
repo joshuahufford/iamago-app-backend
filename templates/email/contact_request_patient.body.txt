@@ -1,0 +1,17 @@
+Hello {{ contact.name }},
+
+We have passed your details to {{ practitioner.display_name }}{% if practitioner.practice_name %} at {{ practitioner.practice_name }}{% endif %}. They should be in touch with you directly.
+
+What we shared:
+
+  "{{ contact.consent_text }}"
+
+{% if recommendation_url %}Your original matches are still here:
+{{ recommendation_url }}
+
+{% endif %}If you did not make this request, reply to this email and we will remove it.
+
+—
+iamago
+We help you find practitioners. We do not provide medical advice, and a listing
+is not an endorsement.

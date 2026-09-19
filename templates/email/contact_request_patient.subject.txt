@@ -1,0 +1,1 @@
+We passed your details to {{ practitioner.display_name }}
