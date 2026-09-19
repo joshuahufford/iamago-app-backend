@@ -1,10 +1,11 @@
 from django.conf import settings
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.analytics.services import check_quota, record_block
 from apps.directory.geocoding import geocode
 from apps.directory.models import (
     HealthConcern,
@@ -15,6 +16,7 @@ from apps.directory.models import (
 from apps.directory.serializers import (
     HealthConcernSerializer,
     ModalitySerializer,
+    PractitionerEventSerializer,
     PractitionerSerializer,
     RecommendationRequestCreateSerializer,
     RecommendationRequestSerializer,
@@ -56,11 +58,55 @@ class RecommendationRequestCreateView(generics.CreateAPIView):
     Anonymous access is intentional: the homepage flow must work before anyone
     signs up. The response carries a ``claim_token`` the visitor can use to
     attach this run to an account later.
+
+    A per-visitor daily allowance keeps the directory from being walked. The
+    first few searches are free and invisible; past that we ask for an email,
+    which raises the ceiling without removing it.
     """
 
     serializer_class = RecommendationRequestCreateSerializer
     permission_classes = [AllowAny]
     authentication_classes: list = []
+
+    @extend_schema(
+        responses={
+            201: RecommendationRequestSerializer,
+            429: OpenApiResponse(
+                description=(
+                    "Daily allowance spent. `code` is `email_required` when an "
+                    "email would raise the limit, or `rate_limited` when even "
+                    "the email-backed allowance is gone."
+                )
+            ),
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        # Checked before validation so a refused request does no real work.
+        email = (request.data.get("email") or "").strip()
+        verdict = check_quota(request, email=email)
+
+        if not verdict.allowed:
+            record_block(request)
+            return Response(
+                {
+                    "detail": (
+                        "You have used your free searches for today. Add your "
+                        "email to keep going."
+                        if verdict.code == "email_required"
+                        else "You have reached today's search limit. Try again tomorrow."
+                    ),
+                    "errors": {},
+                    "code": verdict.code,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        response = super().create(request, *args, **kwargs)
+        response["X-Search-Remaining"] = str(verdict.remaining)
+        return response
 
 
 class RecommendationRequestDetailView(APIView):
@@ -156,3 +202,23 @@ class MapConfigView(APIView):
     def get(self, request):
         key = getattr(settings, "GOOGLE_MAPS_BROWSER_KEY", "")
         return Response({"google_maps_api_key": key, "maps_enabled": bool(key)})
+
+
+class PractitionerEventView(APIView):
+    """Record a click-through on a recommended practitioner.
+
+    Impressions are written server-side when the recommendation is made; only
+    clicks need reporting from the browser, because only the browser knows
+    about them. Unknown practitioners are rejected so the table cannot be
+    filled with noise.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes: list = []
+
+    @extend_schema(request=PractitionerEventSerializer, responses={204: None})
+    def post(self, request):
+        serializer = PractitionerEventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)

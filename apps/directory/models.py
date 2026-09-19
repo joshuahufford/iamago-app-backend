@@ -166,13 +166,24 @@ class RecommendationRequest(TimeStampedModel):
     )
     claim_token = models.CharField(max_length=64, db_index=True, blank=True)
 
+    # Captured by the rate limit's email gate. Blank for searches inside the
+    # free anonymous allowance, which is most of them by design.
+    email = models.EmailField(blank=True)
+    # Salted hash, never the raw address: enough to count a visitor, not enough
+    # to identify one.
+    ip_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+    # Denormalised so "how many searches found nobody" is a column scan rather
+    # than a join against every recommendation.
+    result_count = models.PositiveSmallIntegerField(default=0)
+
     concerns = models.ManyToManyField(HealthConcern, blank=True)
     modalities = models.ManyToManyField(Modality, blank=True)
 
     location_label = models.CharField(max_length=255, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    radius_km = models.PositiveSmallIntegerField(default=40)
+    radius_miles = models.PositiveSmallIntegerField(default=25)
 
     include_telehealth = models.BooleanField(default=True)
     accepting_new_patients_only = models.BooleanField(default=False)
@@ -192,7 +203,7 @@ class Recommendation(TimeStampedModel):
     )
     rank = models.PositiveSmallIntegerField()
     score = models.FloatField()
-    distance_km = models.FloatField(null=True, blank=True)
+    distance_miles = models.FloatField(null=True, blank=True)
     # Short human-readable strings shown on the result card ("Treats 2 of your
     # 3 concerns"), so the ranking is explainable rather than a black box.
     reasons = models.JSONField(default=list, blank=True)

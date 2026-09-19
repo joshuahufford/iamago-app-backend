@@ -34,11 +34,11 @@ TIER_BOOST = {
     Practitioner.Tier.STANDARD: 0.0,
 }
 
-EARTH_RADIUS_KM = 6371.0
+EARTH_RADIUS_MILES = 3958.7613
 
 
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in kilometres."""
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in miles."""
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lon2 - lon1)
@@ -46,7 +46,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         math.sin(d_phi / 2) ** 2
         + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
     )
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
+    return 2 * EARTH_RADIUS_MILES * math.asin(math.sqrt(a))
 
 
 @dataclass
@@ -57,7 +57,7 @@ class MatchCriteria:
     modality_ids: set = field(default_factory=set)
     latitude: float | None = None
     longitude: float | None = None
-    radius_km: float = 40.0
+    radius_miles: float = 25.0
     include_telehealth: bool = True
     accepting_new_patients_only: bool = False
 
@@ -70,7 +70,7 @@ class MatchCriteria:
 class ScoredPractitioner:
     practitioner: Practitioner
     score: float
-    distance_km: float | None
+    distance_miles: float | None
     reasons: list[str]
 
 
@@ -78,16 +78,16 @@ def _as_float(value: Decimal | float | None) -> float | None:
     return None if value is None else float(value)
 
 
-def _bounding_box(lat: float, lon: float, radius_km: float):
+def _bounding_box(lat: float, lon: float, radius_miles: float):
     """Cheap pre-filter box around a point.
 
     Narrowing in SQL before the precise haversine pass keeps the Python-side
     work proportional to nearby practitioners rather than the whole table.
     """
-    lat_delta = radius_km / 110.574
+    lat_delta = radius_miles / 68.703
     # Longitude degrees shrink toward the poles; guard against cos -> 0.
     cos_lat = max(math.cos(math.radians(lat)), 0.01)
-    lon_delta = radius_km / (111.320 * cos_lat)
+    lon_delta = radius_miles / (69.172 * cos_lat)
     return lat - lat_delta, lat + lat_delta, lon - lon_delta, lon + lon_delta
 
 
@@ -105,7 +105,7 @@ def candidate_queryset(criteria: MatchCriteria) -> QuerySet[Practitioner]:
 
     if criteria.has_location:
         min_lat, max_lat, min_lon, max_lon = _bounding_box(
-            criteria.latitude, criteria.longitude, criteria.radius_km
+            criteria.latitude, criteria.longitude, criteria.radius_miles
         )
         nearby = Q(
             latitude__gte=min_lat,
@@ -163,14 +163,14 @@ def score_practitioner(
             score += MODALITY_WEIGHT * min(len(matched) / max(len(implied), 1), 1.0)
 
     # --- Distance: full marks at the doorstep, decaying to zero at the radius.
-    distance_km = None
+    distance_miles = None
     lat, lon = _as_float(practitioner.latitude), _as_float(practitioner.longitude)
     if criteria.has_location and lat is not None and lon is not None:
-        distance_km = haversine_km(criteria.latitude, criteria.longitude, lat, lon)
-        if distance_km <= criteria.radius_km:
-            proximity = 1 - (distance_km / criteria.radius_km)
+        distance_miles = haversine_miles(criteria.latitude, criteria.longitude, lat, lon)
+        if distance_miles <= criteria.radius_miles:
+            proximity = 1 - (distance_miles / criteria.radius_miles)
             score += DISTANCE_WEIGHT * proximity
-            reasons.append(f"{distance_km:.1f} km away")
+            reasons.append(f"{distance_miles:.1f} mi away")
         elif practitioner.offers_telehealth and criteria.include_telehealth:
             reasons.append("Available by telehealth")
         else:
@@ -198,7 +198,7 @@ def score_practitioner(
     return ScoredPractitioner(
         practitioner=practitioner,
         score=round(score, 2),
-        distance_km=round(distance_km, 2) if distance_km is not None else None,
+        distance_miles=round(distance_miles, 2) if distance_miles is not None else None,
         reasons=reasons,
     )
 
@@ -231,7 +231,7 @@ def recommend(criteria: MatchCriteria, limit: int = MAX_RESULTS):
     scored.sort(
         key=lambda item: (
             -item.score,
-            item.distance_km if item.distance_km is not None else math.inf,
+            item.distance_miles if item.distance_miles is not None else math.inf,
             item.practitioner.display_name,
         )
     )

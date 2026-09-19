@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>Import practitioners</h1>
+
+  <p style="max-width:60em">
+    Upload a CSV to add or update listings in bulk. Rows are matched on
+    <code>display_name</code>, so re-uploading a corrected file updates the
+    existing listings instead of duplicating them.
+  </p>
+
+  <p style="max-width:60em">
+    Only <code>display_name</code> is required. <code>modalities</code> and
+    <code>concerns</code> take several values separated by a pipe
+    (<code>Acupuncture|Herbal Medicine</code>) and any name that does not exist
+    yet is created for you.
+  </p>
+
+  <p><b>Columns:</b> <code>{{ columns|join:", " }}</code></p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">{{ form.as_div }}</fieldset>
+    <div class="submit-row">
+      <input type="submit" value="Import" class="default">
+      <a href="{% url 'admin:directory_practitioner_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

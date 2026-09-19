@@ -3,6 +3,8 @@ import secrets
 from django.db import transaction
 from rest_framework import serializers
 
+from apps.analytics.models import PractitionerEvent
+from apps.analytics.services import visitor_hash
 from apps.directory.matching import MAX_RESULTS, MatchCriteria, recommend
 from apps.directory.models import (
     HealthConcern,
@@ -79,7 +81,7 @@ class RecommendationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Recommendation
-        fields = ("rank", "score", "distance_km", "reasons", "practitioner")
+        fields = ("rank", "score", "distance_miles", "reasons", "practitioner")
 
 
 class RecommendationRequestSerializer(serializers.ModelSerializer):
@@ -101,7 +103,7 @@ class RecommendationRequestSerializer(serializers.ModelSerializer):
             "location_label",
             "latitude",
             "longitude",
-            "radius_km",
+            "radius_miles",
             "include_telehealth",
             "accepting_new_patients_only",
             "created_at",
@@ -126,9 +128,12 @@ class RecommendationRequestCreateSerializer(serializers.Serializer):
     location_label = serializers.CharField(required=False, allow_blank=True)
     latitude = serializers.FloatField(required=False, allow_null=True)
     longitude = serializers.FloatField(required=False, allow_null=True)
-    radius_km = serializers.IntegerField(required=False, min_value=1, max_value=500)
+    radius_miles = serializers.IntegerField(required=False, min_value=1, max_value=300)
     include_telehealth = serializers.BooleanField(required=False, default=True)
     accepting_new_patients_only = serializers.BooleanField(required=False, default=False)
+    # Only required once the anonymous daily allowance is spent; the view
+    # enforces that, so it stays optional here.
+    email = serializers.EmailField(required=False, allow_blank=True)
 
     def validate(self, attrs):
         if not attrs.get("concerns") and not attrs.get("modalities"):
@@ -168,10 +173,13 @@ class RecommendationRequestCreateSerializer(serializers.Serializer):
         recommendation_request = RecommendationRequest.objects.create(
             user=user,
             claim_token=secrets.token_urlsafe(32),
+            email=validated_data.get("email", ""),
+            ip_hash=visitor_hash(request) if request else "",
+            user_agent=(request.META.get("HTTP_USER_AGENT", "")[:400] if request else ""),
             location_label=validated_data.get("location_label", ""),
             latitude=validated_data["latitude"],
             longitude=validated_data["longitude"],
-            radius_km=validated_data.get("radius_km", 40),
+            radius_miles=validated_data.get("radius_miles", 25),
             include_telehealth=validated_data.get("include_telehealth", True),
             accepting_new_patients_only=validated_data.get(
                 "accepting_new_patients_only", False
@@ -185,28 +193,71 @@ class RecommendationRequestCreateSerializer(serializers.Serializer):
             modality_ids={m.id for m in modalities},
             latitude=float(recommendation_request.latitude),
             longitude=float(recommendation_request.longitude),
-            radius_km=float(recommendation_request.radius_km),
+            radius_miles=float(recommendation_request.radius_miles),
             include_telehealth=recommendation_request.include_telehealth,
             accepting_new_patients_only=(
                 recommendation_request.accepting_new_patients_only
             ),
         )
 
+        results = recommend(criteria, limit=MAX_RESULTS)
         Recommendation.objects.bulk_create(
             Recommendation(
                 request=recommendation_request,
                 practitioner=result.practitioner,
                 rank=index,
                 score=result.score,
-                distance_km=result.distance_km,
+                distance_miles=result.distance_miles,
                 reasons=result.reasons,
             )
-            for index, result in enumerate(
-                recommend(criteria, limit=MAX_RESULTS), start=1
+            for index, result in enumerate(results, start=1)
+        )
+
+        recommendation_request.result_count = len(results)
+        recommendation_request.save(update_fields=["result_count"])
+
+        # Impressions are written here rather than reported by the browser, so
+        # a partner's numbers cannot be inflated by a client.
+        PractitionerEvent.objects.bulk_create(
+            PractitionerEvent(
+                practitioner=result.practitioner,
+                request=recommendation_request,
+                kind=PractitionerEvent.Kind.IMPRESSION,
+                tier_at_event=result.practitioner.tier,
             )
+            for result in results
         )
 
         return recommendation_request
 
     def to_representation(self, instance):
         return RecommendationRequestSerializer(instance, context=self.context).data
+
+
+class PractitionerEventSerializer(serializers.Serializer):
+    """A click-through reported by the browser."""
+
+    practitioner = serializers.PrimaryKeyRelatedField(
+        queryset=Practitioner.objects.filter(is_published=True)
+    )
+    kind = serializers.ChoiceField(
+        choices=[
+            PractitionerEvent.Kind.PROFILE,
+            PractitionerEvent.Kind.PHONE,
+            PractitionerEvent.Kind.WEBSITE,
+        ]
+    )
+    request_id = serializers.PrimaryKeyRelatedField(
+        queryset=RecommendationRequest.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    def create(self, validated_data):
+        practitioner = validated_data["practitioner"]
+        return PractitionerEvent.objects.create(
+            practitioner=practitioner,
+            request=validated_data.get("request_id"),
+            kind=validated_data["kind"],
+            tier_at_event=practitioner.tier,
+        )

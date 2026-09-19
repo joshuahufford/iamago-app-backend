@@ -3,7 +3,7 @@ import pytest
 from apps.directory.matching import (
     MAX_RESULTS,
     MatchCriteria,
-    haversine_km,
+    haversine_miles,
     recommend,
     score_practitioner,
 )
@@ -59,17 +59,17 @@ def criteria_for(concerns=(), modalities=(), **kwargs):
 
 class TestHaversine:
     def test_zero_distance(self):
-        assert haversine_km(*AUSTIN, *AUSTIN) == pytest.approx(0, abs=1e-9)
+        assert haversine_miles(*AUSTIN, *AUSTIN) == pytest.approx(0, abs=1e-9)
 
     def test_known_distance_austin_to_denver(self):
-        # ~1240 km; generous tolerance since this is a sanity check, not a fixture.
-        assert haversine_km(30.2672, -97.7431, 39.7392, -104.9903) == pytest.approx(
-            1240, rel=0.02
+        # ~770 miles; generous tolerance since this is a sanity check, not a fixture.
+        assert haversine_miles(30.2672, -97.7431, 39.7392, -104.9903) == pytest.approx(
+            770, rel=0.02
         )
 
     def test_is_symmetric(self):
-        forward = haversine_km(30.0, -97.0, 31.0, -98.0)
-        backward = haversine_km(31.0, -98.0, 30.0, -97.0)
+        forward = haversine_miles(30.0, -97.0, 31.0, -98.0)
+        backward = haversine_miles(31.0, -98.0, 30.0, -97.0)
         assert forward == pytest.approx(backward)
 
 
@@ -151,7 +151,7 @@ class TestScoring:
         assert "Treats 1 of your 1 concern" in result.reasons
         assert "Offers Acupuncture" in result.reasons
         assert "iamago partner" in result.reasons
-        assert any("km away" in reason for reason in result.reasons)
+        assert any("mi away" in reason for reason in result.reasons)
 
 
 @pytest.mark.django_db
@@ -279,4 +279,4 @@ class TestRecommend:
             "Round Rock", lat=30.5083, lon=-97.6789, concerns=[concerns["pain"]]
         )
 
-        assert recommend(criteria_for(concerns=[concerns["pain"]], radius_km=5)) == []
+        assert recommend(criteria_for(concerns=[concerns["pain"]], radius_miles=3)) == []

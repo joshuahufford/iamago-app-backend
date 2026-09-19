@@ -6,6 +6,7 @@ from apps.directory.views import (
     MapConfigView,
     ModalityListView,
     PractitionerDetailView,
+    PractitionerEventView,
     RecommendationRequestCreateView,
     RecommendationRequestDetailView,
 )
@@ -28,6 +29,7 @@ urlpatterns = [
         RecommendationRequestDetailView.as_view(),
         name="recommendation-detail",
     ),
+    path("events/", PractitionerEventView.as_view(), name="practitioner-event"),
     path("geocode/", GeocodeView.as_view(), name="geocode"),
     path("map-config/", MapConfigView.as_view(), name="map-config"),
 ]

@@ -100,7 +100,7 @@ class TestRecommendationCreate:
 
         for recommendation in response.json()["recommendations"]:
             assert recommendation["reasons"], "every card must carry its reasoning"
-            assert recommendation["distance_km"] is not None
+            assert recommendation["distance_miles"] is not None
 
     def test_free_text_location_is_geocoded(self, api, seeded):
         response = api.post(

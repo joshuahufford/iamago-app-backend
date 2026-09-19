@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.common",
     "apps.directory",
+    "apps.analytics",
 ]
 
 MIDDLEWARE = [
@@ -151,6 +152,23 @@ GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
 # Browser key, served to the frontend by /api/directory/map-config/. This one
 # is public by nature, so restrict it by HTTP referrer in the Cloud console.
 GOOGLE_MAPS_BROWSER_KEY = env("GOOGLE_MAPS_BROWSER_KEY", default="")
+
+# --- Rate limiting / anti-scraping -----------------------------------------
+
+# Free searches per visitor per day. Deliberately generous: a real patient runs
+# the quiz a handful of times, a scraper runs it thousands.
+ANON_SEARCH_LIMIT_PER_DAY = env.int("ANON_SEARCH_LIMIT_PER_DAY", default=5)
+# Ceiling once a visitor supplies an email. Higher, but still a ceiling — an
+# email is a speed bump, not a licence to take the directory.
+EMAIL_SEARCH_LIMIT_PER_DAY = env.int("EMAIL_SEARCH_LIMIT_PER_DAY", default=25)
+
+# Number of proxies in front of the app. Leave at 0 unless you run behind one:
+# X-Forwarded-For is client-supplied, so trusting it without knowing the proxy
+# depth lets anyone forge their address and reset their own limit.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+
+# Salt for hashing visitor IPs. Rotating it resets everyone's daily counter.
+IP_HASH_SALT = env("IP_HASH_SALT", default="")
 
 # --- CORS ------------------------------------------------------------------
 
