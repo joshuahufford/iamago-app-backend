@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     # Local
     "apps.accounts",
     "apps.common",
+    "apps.directory",
 ]
 
 MIDDLEWARE = [
@@ -142,6 +143,14 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
 }
+
+# --- Google Maps -----------------------------------------------------------
+
+# Server-side key, used for geocoding. Keep it restricted by IP.
+GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
+# Browser key, served to the frontend by /api/directory/map-config/. This one
+# is public by nature, so restrict it by HTTP referrer in the Cloud console.
+GOOGLE_MAPS_BROWSER_KEY = env("GOOGLE_MAPS_BROWSER_KEY", default="")
 
 # --- CORS ------------------------------------------------------------------
 
