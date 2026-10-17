@@ -1,0 +1,242 @@
+"""Django settings for the iamago backend.
+
+All environment-specific values are read from the environment (or a local
+``.env`` file); see ``.env.example`` for the full list.
+"""
+
+from datetime import timedelta
+from pathlib import Path
+
+import environ
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+env = environ.Env(
+    DJANGO_DEBUG=(bool, False),
+    DJANGO_ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    CORS_ALLOWED_ORIGINS=(list, ["http://localhost:5173"]),
+    ACCESS_TOKEN_LIFETIME_MINUTES=(int, 15),
+    REFRESH_TOKEN_LIFETIME_DAYS=(int, 7),
+)
+
+environ.Env.read_env(BASE_DIR / ".env")
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", default="insecure-dev-key-change-me")
+DEBUG = env("DJANGO_DEBUG")
+ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+
+# On Railway, the health check arrives with a Host of healthcheck.railway.app
+# and the service also answers on its generated *.up.railway.app domain. Adding
+# them here means a deploy cannot fail with DisallowedHost over a hostname
+# nobody chose.
+if env("RAILWAY_ENVIRONMENT", default=""):
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, "healthcheck.railway.app"]
+    railway_domain = env("RAILWAY_PUBLIC_DOMAIN", default="")
+    if railway_domain:
+        ALLOWED_HOSTS.append(railway_domain)
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Third party
+    "rest_framework",
+    "corsheaders",
+    "django_filters",
+    "drf_spectacular",
+    # Local
+    "apps.accounts",
+    "apps.common",
+    "apps.directory",
+    "apps.analytics",
+    "apps.outreach",
+    "apps.portal",
+    "apps.patients",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
+
+DATABASES = {
+    "default": env.db(
+        "DATABASE_URL",
+        default="postgres://iamago:iamago@localhost:5432/iamago",
+    )
+}
+DATABASES["default"]["ATOMIC_REQUESTS"] = True
+
+AUTH_USER_MODEL = "accounts.User"
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Django REST Framework -------------------------------------------------
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ),
+    "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.DefaultPagination",
+    "PAGE_SIZE": 25,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.common.exceptions.exception_handler",
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env("ACCESS_TOKEN_LIFETIME_MINUTES")),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env("REFRESH_TOKEN_LIFETIME_DAYS")),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "iamago API",
+    "DESCRIPTION": "Backend API for the iamago web app.",
+    "VERSION": "0.1.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+}
+
+# --- Google Maps -----------------------------------------------------------
+
+# Server-side key, used for geocoding. Keep it restricted by IP.
+GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
+# Browser key, served to the frontend by /api/directory/map-config/. This one
+# is public by nature, so restrict it by HTTP referrer in the Cloud console.
+GOOGLE_MAPS_BROWSER_KEY = env("GOOGLE_MAPS_BROWSER_KEY", default="")
+
+# --- Email -----------------------------------------------------------------
+
+# Console in development so nothing is sent by accident and every message is
+# still visible; point EMAIL_BACKEND at SMTP (or a provider) in production.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="iamago <hello@example.com>")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# Where the frontend lives. Used to build links in outgoing mail, so it must be
+# the public address rather than the API's.
+SITE_URL = env("SITE_URL", default="http://localhost:5173")
+
+# --- Rate limiting / anti-scraping -----------------------------------------
+
+# Free searches per visitor per day. Deliberately generous: a real patient runs
+# the quiz a handful of times, a scraper runs it thousands.
+ANON_SEARCH_LIMIT_PER_DAY = env.int("ANON_SEARCH_LIMIT_PER_DAY", default=5)
+# Ceiling once a visitor supplies an email. Higher, but still a ceiling — an
+# email is a speed bump, not a licence to take the directory.
+EMAIL_SEARCH_LIMIT_PER_DAY = env.int("EMAIL_SEARCH_LIMIT_PER_DAY", default=25)
+# Enquiries per visitor per day, counted separately from searches. An enquiry
+# lands in a practitioner's inbox, so this is deliberately tighter.
+CONTACT_REQUEST_LIMIT_PER_DAY = env.int("CONTACT_REQUEST_LIMIT_PER_DAY", default=5)
+
+# Number of proxies in front of the app. Leave at 0 unless you run behind one:
+# X-Forwarded-For is client-supplied, so trusting it without knowing the proxy
+# depth lets anyone forge their address and reset their own limit.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+
+# Salt for hashing visitor IPs. Rotating it resets everyone's daily counter.
+IP_HASH_SALT = env("IP_HASH_SALT", default="")
+
+# --- CORS ------------------------------------------------------------------
+
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOW_CREDENTIALS = True
+
+# --- Security --------------------------------------------------------------
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # The platform health check reaches the container directly and may not
+    # carry X-Forwarded-Proto. Without this it gets a 301 to https, and a
+    # redirect counts as a failed check — so the deploy would never go live
+    # while the app itself was perfectly healthy.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {"format": "{levelname} {asctime} {name} {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+    },
+    "root": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", default="INFO")},
+}
