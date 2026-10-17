@@ -25,6 +25,20 @@ CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 FROM base AS prod
 RUN pip install -r requirements.txt
 COPY . .
+
+# Collected at build time so the container starts with its static manifest
+# already in place. It needs no database: every setting it reads has a default.
 RUN python manage.py collectstatic --noinput
+
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+
+# Shell form on purpose: the platform injects PORT at runtime, and binding a
+# hard-coded port makes the service unreachable however healthy it is.
+# WEB_CONCURRENCY is gunicorn's own variable, so worker count is tunable
+# without a rebuild. Logs go to stdout/stderr for the platform to collect.
+CMD gunicorn config.wsgi:application \
+    --bind "0.0.0.0:${PORT:-8000}" \
+    --workers "${WEB_CONCURRENCY:-3}" \
+    --timeout "${GUNICORN_TIMEOUT:-60}" \
+    --access-logfile - \
+    --error-logfile -

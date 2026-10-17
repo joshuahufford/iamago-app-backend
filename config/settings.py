@@ -25,6 +25,16 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="insecure-dev-key-change-me")
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
 
+# On Railway, the health check arrives with a Host of healthcheck.railway.app
+# and the service also answers on its generated *.up.railway.app domain. Adding
+# them here means a deploy cannot fail with DisallowedHost over a hostname
+# nobody chose.
+if env("RAILWAY_ENVIRONMENT", default=""):
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, "healthcheck.railway.app"]
+    railway_domain = env("RAILWAY_PUBLIC_DOMAIN", default="")
+    if railway_domain:
+        ALLOWED_HOSTS.append(railway_domain)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -207,6 +217,11 @@ CORS_ALLOW_CREDENTIALS = True
 if not DEBUG:
     SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # The platform health check reaches the container directly and may not
+    # carry X-Forwarded-Proto. Without this it gets a 301 to https, and a
+    # redirect counts as a failed check — so the deploy would never go live
+    # while the app itself was perfectly healthy.
+    SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
