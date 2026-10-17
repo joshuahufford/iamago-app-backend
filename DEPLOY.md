@@ -127,7 +127,18 @@ try is binding IPv6 as well: add a second `--bind "[::]:${PORT}"` to the
 
 ## The frontend
 
-Separate deploy — it is a static Vite build. Point it at this API with
-`VITE_API_BASE_URL=https://api.iamago.com/api` at **build** time (Vite inlines
-`VITE_*` into the bundle), and make sure its origin is in `CORS_ALLOWED_ORIGINS`
-above.
+Separate deploy — see `DEPLOY.md` in the frontend repo. Point it at this API
+with `VITE_API_BASE_URL=https://api.iamago.com/api` at **build** time (Vite
+inlines `VITE_*` into the bundle), and make sure its origin is in
+`CORS_ALLOWED_ORIGINS` above.
+
+Preview deployments get a new hostname on every build, so they cannot be listed
+individually. Allow them with a pattern instead:
+
+```
+CORS_ALLOWED_ORIGIN_REGEXES=^https://iamago-app-frontend-[a-z0-9-]+\.vercel\.app$
+```
+
+Keep it anchored at both ends. An unanchored pattern would also match
+`https://iamago-app-frontend-evil.attacker.com`, which is the usual way this
+kind of rule goes wrong — `tests/test_cors.py` holds that line.

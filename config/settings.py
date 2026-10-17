@@ -210,6 +210,11 @@ IP_HASH_SALT = env("IP_HASH_SALT", default="")
 # --- CORS ------------------------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+# Preview deployments get a fresh hostname per build, so they can never be
+# listed individually. A regex keeps them working without opening the API to
+# every origin — keep the pattern anchored and as narrow as the host allows.
+# e.g. ^https://iamago-app-frontend-[a-z0-9-]+\.vercel\.app$
+CORS_ALLOWED_ORIGIN_REGEXES = env.list("CORS_ALLOWED_ORIGIN_REGEXES", default=[])
 CORS_ALLOW_CREDENTIALS = True
 
 # --- Security --------------------------------------------------------------
